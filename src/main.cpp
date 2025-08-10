@@ -159,6 +159,7 @@ const struct option *gamescope_options = (struct option[]){
 	{ "libinput-hold-dev", required_argument, nullptr, 0 },
 	{ "backend-disable-keyboard", no_argument, nullptr, 0 },
 	{ "backend-disable-mouse", no_argument, nullptr, 0 },
+	{ "nested-folow-window-scale", required_argument, nullptr, 0},
 
 	{} // keep last
 };
@@ -229,6 +230,7 @@ const char usage[] =
 	"  --libinput-hold-dev            Comma seporated list of evdev path devices that will become the handlers on the nested window (WAYLAND & SDL & VR ONLY)\n"
 	"  --backend-disable-keyboard     Disables the normal backend keyboard support (window will not handle keyboard) (WAYLAND & SDL ONLY)\n"
 	"  --backend-disable-mouse        Disables the normal backend mouse support (window will not handle mouse) (WAYLAND & SDL ONLY)\n"
+	"  --nested-folow-window-scale    Enables nested mode size (-w and -h) to be updated to this scale relitive to the output window size (times this scale factor), when being resized. Default -1 (disabled) (WAYLAND & SDL ONLY)"
 	"\n"
 	"Embedded mode options:\n"
 	"  -O, --prefer-output            list of connectors in order of preference (ex: DP-1,DP-2,DP-3,HDMI-A-1)\n"
@@ -295,6 +297,7 @@ int g_nNestedHeight = 0;
 int g_nNestedRefresh = 0;
 int g_nNestedUnfocusedRefresh = 0;
 int g_nNestedDisplayIndex = 0;
+float g_nForceNestedScaleForWindow = -1;
 
 uint32_t g_nOutputWidth = 0;
 uint32_t g_nOutputHeight = 0;
@@ -309,7 +312,7 @@ bool g_bGrabbed = false;
 bool g_bKeyboardDisabled = false;
 bool g_bMouseDisabled = false;
 std::vector<std::string> g_libinputSelectedDevices;
-
+std::vector<int> g_libinputSelectedDevices_grabbed_fds;
 float g_mouseSensitivity = 1.0;
 
 GamescopeUpscaleFilter g_upscaleFilter = GamescopeUpscaleFilter::LINEAR;
@@ -847,6 +850,8 @@ int main(int argc, char **argv)
 					g_bKeyboardDisabled = true;
 				} else if (strcmp(opt_name, "backend-disable-mouse") == 0) {
 					g_bMouseDisabled = true;
+				} else if (strcmp(opt_name, "nested-folow-window-scale") == 0) {
+					g_nForceNestedScaleForWindow = parse_float(optarg, opt_name);
 				}
 				break;
 			case '?':
@@ -1003,8 +1008,13 @@ int main(int argc, char **argv)
 			fprintf( stderr, "Cannot specify -w without -h\n" );
 			return 1;
 		}
-		g_nNestedWidth = g_nOutputWidth;
-		g_nNestedHeight = g_nOutputHeight;
+		if (g_nForceNestedScaleForWindow != -1) {
+			g_nNestedWidth = g_nOutputWidth * g_nForceNestedScaleForWindow;
+			g_nNestedHeight = g_nOutputHeight * g_nForceNestedScaleForWindow;
+		} else {
+			g_nNestedWidth = g_nOutputWidth;
+			g_nNestedHeight = g_nOutputHeight;
+		}
 	}
 	if ( g_nNestedWidth == 0 )
 		g_nNestedWidth = g_nNestedHeight * 16 / 9;

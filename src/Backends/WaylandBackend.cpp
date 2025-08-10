@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "main.hpp"
 #include "rendervulkan.hpp"
 #include "wlserver.hpp"
 #include "vblankmanager.hpp"
@@ -12,6 +13,7 @@
 #include "Utils/TempFiles.h"
 
 #include <cstring>
+#include <linux/input.h>
 #include <unordered_map>
 #include <unordered_set>
 #include <csignal>
@@ -1687,6 +1689,17 @@ namespace gamescope
         }
         g_nOutputWidth  = WaylandScaleToPhysical( nWidth, uScale );
         g_nOutputHeight = WaylandScaleToPhysical( nHeight, uScale );
+        
+        int scaled_g_nOutputWidth = g_nOutputWidth * g_nForceNestedScaleForWindow;
+        int scaled_g_nOutputHeight = g_nOutputHeight * g_nForceNestedScaleForWindow;
+        if (g_nForceNestedScaleForWindow != -1 && (g_nNestedWidth != scaled_g_nOutputWidth || g_nNestedHeight != scaled_g_nOutputHeight)) {
+            g_nNestedWidth = scaled_g_nOutputWidth;
+            g_nNestedHeight = scaled_g_nOutputHeight;
+            // fprintf(stderr,"WL-resize evnt fired\n");
+            // std::cerr.flush();
+            auto xwayland_server_tmp = wlserver_get_xwayland_server(0);
+            xwayland_server_tmp->update_output_info();
+        }
 
         CommitLibDecor( pConfiguration );
 
@@ -2860,6 +2873,32 @@ namespace gamescope
 
         if ( m_uKeyModifiers & m_uModMask[ GAMESCOPE_WAYLAND_MOD_META ] )
         {
+            
+            static std::bitset<KEY_MAX+1> held_keys;
+            static bool toggle_grab_on_all_keys_up;
+
+            if (uKey <= KEY_MAX) {
+                held_keys[uKey] = bPressed; // Toggle the pressed button
+            }
+            if (held_keys[KEY_G] && held_keys[KEY_LEFTMETA]) toggle_grab_on_all_keys_up = true;
+
+            if (toggle_grab_on_all_keys_up && held_keys.none()) {
+                toggle_grab_on_all_keys_up = false;
+                g_bGrabbed = !g_bGrabbed;
+
+                for (int dev_fd : g_libinputSelectedDevices_grabbed_fds) {
+                    if (g_bGrabbed) {
+                        if (ioctl(dev_fd, EVIOCGRAB, 1) < 0) {
+                            fprintf( stderr,"Wayland: Failed to grab exclusive lock on device: %d\n", dev_fd);
+                        }
+                    } else {
+                        if (ioctl(dev_fd, EVIOCGRAB, 0) < 0) {
+                            fprintf( stderr,"Wayland: Failed to release exclusive grab on device: %d\n", dev_fd);
+                        }
+                    }
+                }
+            }
+
             switch ( uKey )
             {
                 case KEY_F:
@@ -2935,6 +2974,27 @@ namespace gamescope
                     }
                     return;
                 }
+
+                // case KEY_G:
+                // {
+                //     if ( !bPressed )
+                //     {
+                //         g_bGrabbed = !g_bGrabbed;
+
+                //         for (int dev_fd : g_libinputSelectedDevices_grabbed_fds) {
+                //             if (g_bGrabbed) {
+                //                 if (ioctl(dev_fd, EVIOCGRAB, 1) < 0) {
+                //                     fprintf( stderr,"Failed to grab exclusive lock on device: %d", dev_fd);
+                //                 }
+                //             } else {
+                //                 if (ioctl(dev_fd, EVIOCGRAB, 0) < 0) {
+                //                     fprintf( stderr,"Failed to release exclusive grab on device: %d", dev_fd);
+                //                 }
+                //             }
+                //         }
+                //     }
+                //     return;
+                // }
 
                 default:
                     break;
