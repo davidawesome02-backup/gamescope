@@ -16,6 +16,7 @@ extern int g_nNestedHeight;
 extern int g_nNestedRefresh; // mHz
 extern int g_nNestedUnfocusedRefresh; // mHz
 extern int g_nNestedDisplayIndex;
+extern float g_nForceNestedScaleForWindow;
 
 extern uint32_t g_nOutputWidth;
 extern uint32_t g_nOutputHeight;
@@ -33,6 +34,7 @@ extern bool g_bKeyboardDisabled;
 extern bool g_bMouseDisabled;
 
 extern std::vector<std::string> g_libinputSelectedDevices;
+extern std::vector<int> g_libinputSelectedDevices_grabbed_fds;
 
 extern float g_mouseSensitivity;
 extern const char *g_sOutputName;

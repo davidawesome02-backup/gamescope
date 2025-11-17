@@ -1,6 +1,7 @@
 // For the nested case, reads input from the SDL window and send to wayland
 
 #include <X11/Xlib.h>
+#include <linux/input.h>
 #include <thread>
 #include <mutex>
 #include <string>
@@ -771,6 +772,37 @@ namespace gamescope
 				{
 					if (g_bKeyboardDisabled) break;
 					uint32_t key = SDLScancodeToLinuxKey( event.key.keysym.scancode );
+					static std::bitset<KEY_MAX+1> held_keys;
+					static bool toggle_grab_on_all_keys_up;
+
+					if (key <= KEY_MAX) {
+                        held_keys[key] = (event.type == SDL_KEYUP); // Toggle the pressed button
+                    }
+					if (held_keys[KEY_G] && held_keys[KEY_LEFTMETA]) toggle_grab_on_all_keys_up = true;
+
+ 					if (toggle_grab_on_all_keys_up && held_keys.none()) {
+						toggle_grab_on_all_keys_up = false;
+						g_bGrabbed = !g_bGrabbed;
+
+						for (int dev_fd : g_libinputSelectedDevices_grabbed_fds) {
+							if (g_bGrabbed) {
+								if (ioctl(dev_fd, EVIOCGRAB, 1) < 0) {
+									fprintf( stderr,"SDL: Failed to grab exclusive lock on device: %d\n", dev_fd);
+								}
+							} else {
+								if (ioctl(dev_fd, EVIOCGRAB, 0) < 0) {
+									fprintf( stderr,"SDL: Failed to release exclusive grab on device: %d\n", dev_fd);
+								}
+							}
+						}
+
+						SDL_SetWindowKeyboardGrab( m_Connector.GetSDLWindow(), g_bGrabbed ? SDL_TRUE : SDL_FALSE );
+
+						SDL_Event event;
+						event.type = GetUserEventIndex( GAMESCOPE_SDL_EVENT_TITLE );
+						SDL_PushEvent( &event );
+					}
+
 
 					if ( event.type == SDL_KEYUP && ( event.key.keysym.mod & KMOD_LGUI ) )
 					{
@@ -804,14 +836,27 @@ namespace gamescope
 							case KEY_S:
 								gamescope::CScreenshotManager::Get().TakeScreenshot( true );
 								break;
-							case KEY_G:
-								g_bGrabbed = !g_bGrabbed;
-								SDL_SetWindowKeyboardGrab( m_Connector.GetSDLWindow(), g_bGrabbed ? SDL_TRUE : SDL_FALSE );
+							// case KEY_G:
+							// 	g_bGrabbed = !g_bGrabbed;
 
-								SDL_Event event;
-								event.type = GetUserEventIndex( GAMESCOPE_SDL_EVENT_TITLE );
-								SDL_PushEvent( &event );
-								break;
+							// 	for (int dev_fd : g_libinputSelectedDevices_grabbed_fds) {
+							// 		if (g_bGrabbed) {
+							// 			if (ioctl(dev_fd, EVIOCGRAB, 1) < 0) {
+							// 				fprintf( stderr,"Failed to grab exclusive lock on device: %d", dev_fd);
+							// 			}
+							// 		} else {
+							// 			if (ioctl(dev_fd, EVIOCGRAB, 0) < 0) {
+							// 				fprintf( stderr,"Failed to release exclusive grab on device: %d", dev_fd);
+							// 			}
+							// 		}
+							// 	}
+
+							// 	SDL_SetWindowKeyboardGrab( m_Connector.GetSDLWindow(), g_bGrabbed ? SDL_TRUE : SDL_FALSE );
+
+							// 	SDL_Event event;
+							// 	event.type = GetUserEventIndex( GAMESCOPE_SDL_EVENT_TITLE );
+							// 	SDL_PushEvent( &event );
+							// 	break;
 							default:
 								handled = false;
 						}
@@ -851,6 +896,18 @@ namespace gamescope
 #endif
 							g_nOutputWidth = width;
 							g_nOutputHeight = height;
+							{
+								int scaled_g_nOutputWidth = g_nOutputWidth * g_nForceNestedScaleForWindow;
+								int scaled_g_nOutputHeight = g_nOutputHeight * g_nForceNestedScaleForWindow;
+								if ((g_nForceNestedScaleForWindow != -1) && (g_nNestedWidth != scaled_g_nOutputWidth || g_nNestedHeight != scaled_g_nOutputHeight)) {
+									g_nNestedWidth = scaled_g_nOutputWidth;
+									g_nNestedHeight = scaled_g_nOutputHeight;
+									// fprintf(stderr,"SDL-resize evnt fired\n");
+									// std::cerr.flush();
+									auto xwayland_server_tmp = wlserver_get_xwayland_server(0);
+									xwayland_server_tmp->update_output_info();
+								}
+							}
 
 						[[fallthrough]];
 						case SDL_WINDOWEVENT_MOVED:
