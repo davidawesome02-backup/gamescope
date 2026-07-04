@@ -47,6 +47,7 @@ using namespace std::literals;
 EStreamColorspace g_ForcedNV12ColorSpace = k_EStreamColorspace_Unknown;
 extern gamescope::ConVar<bool> cv_adaptive_sync;
 extern gamescope::ConVar<bool> cv_shutdown_on_primary_child_death;
+extern gamescope::ConVar<int> cv_cursor_composite;
 
 const char *gamescope_optstring = nullptr;
 const char *g_pOriginalDisplay = nullptr;
@@ -85,6 +86,7 @@ const struct option *gamescope_options = (struct option[]){
 	{ "grab", no_argument, nullptr, 'g' },
 	{ "force-grab-cursor", no_argument, nullptr, 0 },
 	{ "display-index", required_argument, nullptr, 0 },
+	{ "nested-follow-window-scale", required_argument, nullptr, 0},
 
 	// embedded mode options
 	{ "disable-layers", no_argument, nullptr, 0 },
@@ -123,6 +125,7 @@ const struct option *gamescope_options = (struct option[]){
 	{ "cursor", required_argument, nullptr, 0 },
 	{ "cursor-hotspot", required_argument, nullptr, 0 },
 	{ "cursor-scale-height", required_argument, nullptr, 0 },
+	{ "composite-cursor", no_argument, nullptr, 0 },
 	{ "virtual-connector-strategy", required_argument, nullptr, 0 },
 	{ "ready-fd", required_argument, nullptr, 'R' },
 	{ "stats-path", required_argument, nullptr, 'T' },
@@ -224,7 +227,9 @@ const char usage[] =
 	"  -f, --fullscreen               make the window fullscreen\n"
 	"  -g, --grab                     grab the keyboard\n"
 	"  --force-grab-cursor            always use relative mouse mode instead of flipping dependent on cursor visibility.\n"
-	"  --display-index                forces gamescope to use a specific display in nested mode."
+	"  --display-index                forces gamescope to use a specific display in nested mode.\n"
+	"  --composite-cursor             force composite the cursor into the output framebuffer rather than relying on the hardware cursor plane.\n"
+	"  --nested-follow-window-scale   Enables nested mode size (-w and -h) to be updated to this scale relitive to the output window size (times this scale factor), when being resized. Default -1 (disabled) (WAYLAND & SDL ONLY)"
 	"\n"
 	"Embedded mode options:\n"
 	"  -O, --prefer-output            list of connectors in order of preference (ex: DP-1,DP-2,DP-3,HDMI-A-1)\n"
@@ -295,6 +300,7 @@ int g_nNestedHeight = 0;
 int g_nNestedRefresh = 0;
 int g_nNestedUnfocusedRefresh = 0;
 int g_nNestedDisplayIndex = 0;
+float g_nForceNestedScaleForWindow = -1;
 
 uint32_t g_nOutputWidth = 0;
 uint32_t g_nOutputHeight = 0;
@@ -817,6 +823,8 @@ int main(int argc, char **argv)
 					g_bForceRelativeMouse = true;
 				} else if (strcmp(opt_name, "display-index") == 0) {
 					g_nNestedDisplayIndex = parse_integer( optarg, opt_name );
+				} else if (strcmp(opt_name, "nested-follow-window-scale") == 0) {
+					g_nForceNestedScaleForWindow = parse_float(optarg, opt_name);
 				} else if (strcmp(opt_name, "adaptive-sync") == 0) {
 					cv_adaptive_sync = true;
 				} else if (strcmp(opt_name, "expose-wayland") == 0) {
@@ -827,6 +835,8 @@ int main(int argc, char **argv)
 					g_nCursorScaleHeight = parse_integer(optarg, opt_name);
 				} else if (strcmp(opt_name, "mangoapp") == 0) {
 					g_bLaunchMangoapp = true;
+				} else if (strcmp(opt_name, "composite-cursor") == 0) {
+					cv_cursor_composite = 2;
 				} else if (strcmp(opt_name, "allow-deferred-backend") == 0) {
 					g_bAllowDeferredBackend = true;
 				} else if (strcmp(opt_name, "keep-alive") == 0) {
@@ -1031,8 +1041,13 @@ int main(int argc, char **argv)
 			fprintf( stderr, "Cannot specify -w without -h\n" );
 			return 1;
 		}
-		g_nNestedWidth = g_nOutputWidth;
-		g_nNestedHeight = g_nOutputHeight;
+		if (g_nForceNestedScaleForWindow != -1) {
+			g_nNestedWidth = g_nOutputWidth * g_nForceNestedScaleForWindow;
+			g_nNestedHeight = g_nOutputHeight * g_nForceNestedScaleForWindow;
+		} else {
+			g_nNestedWidth = g_nOutputWidth;
+			g_nNestedHeight = g_nOutputHeight;
+		}
 	}
 	if ( g_nNestedWidth == 0 )
 		g_nNestedWidth = g_nNestedHeight * 16 / 9;

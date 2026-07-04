@@ -35,6 +35,7 @@ protocols = [
 	'gamescope-xwayland.xml',
 	'gamescope-pipewire.xml',
 	'gamescope-input-method.xml',
+	'gamescope-input.xml',
 	'gamescope-control.xml',
 	'gamescope-reshade.xml',
 	'gamescope-swapchain.xml',

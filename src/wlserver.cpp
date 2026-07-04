@@ -50,6 +50,7 @@
 #include "gamescope-xwayland-protocol.h"
 #include "gamescope-pipewire-protocol.h"
 #include "gamescope-control-protocol.h"
+#include "gamescope-input-protocol.h"
 #include "gamescope-private-protocol.h"
 #include "gamescope-swapchain-protocol.h"
 #include "presentation-time-protocol.h"
@@ -216,6 +217,8 @@ void wlserver_xdg_commit(struct wlr_surface *surf, struct wlr_buffer *buf)
 }
 
 void xwayland_surface_commit(struct wlr_surface *wlr_surface) {
+	static int previously_issued_nested_width, previously_issued_nested_height;
+	
 	wlr_surface->current.committed = 0;
 
 	wlserver_x11_surface_info *wlserver_x11_surface_info = get_wl_surface_info(wlr_surface)->x11_surface;
@@ -232,6 +235,13 @@ void xwayland_surface_commit(struct wlr_surface *wlr_surface) {
 				wlr_layer_surface_v1_configure( wlserver_xdg_surface_info->layer_surface, g_nNestedWidth, g_nNestedHeight );
 
 			wlserver_xdg_surface_info->bDoneConfigure = true;
+		}
+
+		if ((g_nForceNestedScaleForWindow != -1) && wlserver_xdg_surface_info->layer_surface && (previously_issued_nested_width != g_nNestedWidth || previously_issued_nested_height != g_nNestedHeight)) {
+			wlr_layer_surface_v1_configure( wlserver_xdg_surface_info->layer_surface, g_nNestedWidth, g_nNestedHeight );
+			
+			previously_issued_nested_width = g_nNestedWidth;
+			previously_issued_nested_height = g_nNestedHeight;
 		}
 	}
 
@@ -1437,6 +1447,96 @@ static void create_gamescope_private( void )
 	wl_global_create( wlserver.display, &gamescope_private_interface, version, NULL, gamescope_private_bind );
 }
 
+////////////////////////
+// gamescope_input
+////////////////////////
+
+static void gamescope_input_keyboard_key( struct wl_client *client, struct wl_resource *resource,
+  uint32_t key, uint32_t pressed )
+{
+	assert( wlserver_is_lock_held() );
+	wlserver_key( key, pressed, 0 );
+}
+
+static void gamescope_input_mouse_motion( struct wl_client *client, struct wl_resource *resource,
+  int32_t dx, int32_t dy )
+{
+	assert( wlserver_is_lock_held() );
+	wlserver_mousemotion( (double)dx, (double)dy, 0 );
+}
+
+static void gamescope_input_mouse_warp( struct wl_client *client, struct wl_resource *resource,
+  int32_t x, int32_t y )
+{
+	assert( wlserver_is_lock_held() );
+	wlserver_mousewarp( (double)x, (double)y, 0, true );
+}
+
+static void gamescope_input_mouse_button( struct wl_client *client, struct wl_resource *resource,
+  uint32_t button, uint32_t pressed )
+{
+	assert( wlserver_is_lock_held() );
+	wlserver_mousebutton( button, pressed, 0 );
+}
+
+static void gamescope_input_mouse_scroll( struct wl_client *client, struct wl_resource *resource,
+  int32_t dx, int32_t dy )
+{
+	assert( wlserver_is_lock_held() );
+	wlserver_mousewheel( dx / 120.0, dy / 120.0, 0 );
+}
+
+static void gamescope_input_get_output_size( struct wl_client *client, struct wl_resource *resource )
+{
+	int w = g_nNestedWidth;
+	int h = g_nNestedHeight;
+	gamescope_input_send_output_size( resource, (uint32_t)w, (uint32_t)h );
+}
+
+static void gamescope_input_get_mouse_position( struct wl_client *client, struct wl_resource *resource )
+{
+	assert( wlserver_is_lock_held() );
+	double cx = wlserver.mouse_surface_cursorx;
+	double cy = wlserver.mouse_surface_cursory;
+
+	gamescope_input_send_mouse_position( resource,
+		wl_fixed_from_double(cx),
+		wl_fixed_from_double(cy) );
+}
+
+static void gamescope_input_handle_destroy( struct wl_client *client, struct wl_resource *resource )
+{
+	wl_resource_destroy( resource );
+}
+
+static const struct gamescope_input_interface gamescope_input_impl = {
+	.destroy = gamescope_input_handle_destroy,
+	.keyboard_key = gamescope_input_keyboard_key,
+	.mouse_motion = gamescope_input_mouse_motion,
+	.mouse_warp = gamescope_input_mouse_warp,
+	.mouse_button = gamescope_input_mouse_button,
+	.mouse_scroll = gamescope_input_mouse_scroll,
+	.get_output_size = gamescope_input_get_output_size,
+	.get_mouse_position = gamescope_input_get_mouse_position,
+};
+
+static void gamescope_input_bind( struct wl_client *client, void *data, uint32_t version, uint32_t id )
+{
+	struct wl_resource *resource = wl_resource_create( client, &gamescope_input_interface, version, id );
+	if ( !resource )
+	{
+		wl_client_post_no_memory( client );
+		return;
+	}
+	wl_resource_set_implementation( resource, &gamescope_input_impl, NULL, NULL );
+}
+
+static void create_gamescope_input( void )
+{
+	uint32_t version = 1;
+	wl_global_create( wlserver.display, &gamescope_input_interface, version, NULL, gamescope_input_bind );
+}
+
 static void create_explicit_sync()
 {
 	new gamescope::WaylandServer::CLinuxDrmSyncobj( wlserver.display );
@@ -1835,6 +1935,19 @@ gamescope_xwayland_server_t::~gamescope_xwayland_server_t()
 
 void gamescope_xwayland_server_t::update_output_info()
 {
+	int refresh = g_nNestedRefresh;
+	if (refresh == 0) {
+		refresh = g_nOutputRefresh;
+	}
+
+	wlr_output_state_set_enabled(output_state, true);
+	wlr_output_state_set_custom_mode(output_state, g_nNestedWidth, g_nNestedHeight, refresh);
+	if (!wlr_output_commit_state(output, output_state))
+	{
+		wl_log.errorf("Failed to commit headless output");
+		abort();
+	}
+
 	const auto *info = &wlserver.output_info;
 
 	output->phys_width = info->phys_width;
@@ -2063,6 +2176,8 @@ bool wlserver_init( void ) {
 	create_gamescope_control();
 
 	create_gamescope_private();
+
+	create_gamescope_input();
 
 	create_presentation_time();
 

@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="gamescope_input">
+
+  <copyright>
+    Copyright © 2024 Valve Corporation
+
+    Permission is hereby granted, free of charge, to any person obtaining a
+    copy of this software and associated documentation files (the "Software"),
+    to deal in the Software without restriction, including without limitation
+    the rights to use, copy, modify, merge, publish, distribute, sublicense,
+    and/or sell copies of the Software, and to permit persons to whom the
+    Software is furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice (including the next
+    paragraph) shall be included in all copies or substantial portions of the
+    Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+    THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+    FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+    DEALINGS IN THE SOFTWARE.
+  </copyright>
+
+  <description summary="gamescope-specific input protocol">
+    This is a private Gamescope protocol for sending input events.
+    No stable ABI is guaranteed for this protocol, it is versioned with gamescope.
+  </description>
+
+  <interface name="gamescope_input" version="1">
+    <request name="destroy" type="destructor"></request>
+
+    <!-- Keyboard: key is a Linux scan code (EV_MSC/MSC_SCAN) -->
+    <request name="keyboard_key">
+      <description summary="send a keyboard key event">
+        Send a keyboard key event to gamescope.
+        The 'key' is a Linux scan code (EV_MSC/MSC_SCAN), not a keycode.
+        Use 0 for release, 1 for press.
+      </description>
+      <arg name="key" type="uint" summary="Linux scan code"/>
+      <arg name="pressed" type="uint" summary="0 for release, 1 for press"/>
+    </request>
+
+    <!-- Mouse: relative motion in pixels -->
+    <request name="mouse_motion">
+      <description summary="send a relative mouse motion event">
+        Move the mouse by the given delta (dx, dy) in pixels.
+        Positive dx is right, positive dy is down.
+      </description>
+      <arg name="dx" type="int" summary="delta x in pixels"/>
+      <arg name="dy" type="int" summary="delta y in pixels"/>
+    </request>
+
+    <!-- Mouse: absolute position warp -->
+    <request name="mouse_warp">
+      <description summary="warp mouse to absolute position">
+        Warp the mouse cursor to the given absolute position (x, y).
+        Coordinates are in the gamescope virtual output space.
+        The maximum coordinates are given by the width/height from
+        the get_output_size event.
+      </description>
+      <arg name="x" type="int" summary="absolute x position"/>
+      <arg name="y" type="int" summary="absolute y position"/>
+    </request>
+
+    <!-- Mouse: button (Linux input event codes: BTN_LEFT, BTN_RIGHT, etc.) -->
+    <request name="mouse_button">
+      <description summary="send a mouse button event">
+        Send a mouse button press or release event.
+        The 'button' is a Linux input event code for mouse
+      </description>
+      <arg name="button" type="uint" summary="Linux button code"/>
+      <arg name="pressed" type="uint" summary="0 for release, 1 for press"/>
+    </request>
+
+    <!-- Mouse: scroll/wheel (uses 120 scaling mechanism like input-method) -->
+    <request name="mouse_scroll">
+      <description summary="send a mouse scroll event">
+        Send a scroll event. Positive is scroll up/right.
+        Values are in 120-per-notch scaling: value * 120 -> 120 = 1.0 notch.
+      </description>
+      <arg name="dx" type="int" summary="horizontal scroll steps * 120"/>
+      <arg name="dy" type="int" summary="vertical scroll steps * 120"/>
+    </request>
+
+    <!-- Query: get output size for absolute positioning -->
+    <request name="get_output_size">
+      <description summary="query the output size">
+        Query the gamescope output size in pixels for absolute positioning calculations.
+        The size will be sent back via the output_size event.
+      </description>
+    </request>
+
+    <event name="output_size">
+      <description summary="output size in pixels">
+        Reply to get_output_size with the current output dimensions.
+        This is the virtual output size, not the physical display size.
+      </description>
+      <arg name="width" type="uint" summary="output width in pixels"/>
+      <arg name="height" type="uint" summary="output height in pixels"/>
+    </event>
+
+    <!-- Current mouse position -->
+    <request name="get_mouse_position">
+      <description summary="query the current mouse position">
+        Query the current mouse cursor position.
+        The position will be sent back via the mouse_position event.
+      </description>
+    </request>
+
+    <event name="mouse_position">
+      <description summary="current mouse position">
+        Reply to get_mouse_position with the current cursor position.
+        Position is in the gamescope virtual output space.
+      </description>
+      <arg name="x" type="fixed" summary="current x position"/>
+      <arg name="y" type="fixed" summary="current y position"/>
+    </event>
+
+  </interface>
+</protocol>

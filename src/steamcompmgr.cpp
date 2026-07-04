@@ -2304,6 +2304,13 @@ static void update_touch_scaling( const struct FrameInfo_t *frameInfo )
 }
 
 #if HAVE_PIPEWIRE
+
+// Forward declarations for convars used in paint_pipewire() but defined later in this file.
+extern gamescope::ConVar<bool> cv_paint_override_redirect_plane;
+extern gamescope::ConVar<bool> cv_paint_steam_overlay_plane;
+extern gamescope::ConVar<bool> cv_paint_external_overlay_plane;
+extern gamescope::ConVar<bool> cv_paint_cursor_plane;
+
 static void paint_pipewire()
 {
 	static struct pipewire_buffer *s_pPipewireBuffer = nullptr;
@@ -2372,19 +2379,39 @@ static void paint_pipewire()
 	if ( !bAppIdMatches )
 		return;
 
+	// Get cursor refrence for drawing if we can
+	global_focus_t *glFocus = GetCurrentFocus();
+	MouseCursor *cursor = glFocus ? glFocus->cursor : nullptr;
+
 	// If the commits are the same as they were last time, don't repaint and don't push a new buffer on the stream.
 	static uint64_t s_ulLastFocusCommitId = 0;
 	static uint64_t s_ulLastOverrideCommitId = 0;
 
+	// Track cursor state so we repaint when the cursor moves
+	static int s_nLastCursorX = 0;
+	static int s_nLastCursorY = 0;
+	static bool s_bLastCursorShouldDraw = false;
+
 	uint64_t ulFocusCommitId = window_last_done_commit_id( pFocus->focusWindow );
 	uint64_t ulOverrideCommitId = window_last_done_commit_id( pFocus->overrideWindow );
 
+	// Check if cursor position or visibility changed.
+	bool bCursorShouldDraw = pFocus->inputFocusWindow && cursor && ShouldDrawCursor() && cv_paint_cursor_plane;
+	int nCursorX = cursor ? cursor->x() : 0;
+	int nCursorY = cursor ? cursor->y() : 0;
+
 	if ( ulFocusCommitId == s_ulLastFocusCommitId &&
-	     ulOverrideCommitId == s_ulLastOverrideCommitId )
+	     ulOverrideCommitId == s_ulLastOverrideCommitId &&
+	     nCursorX == s_nLastCursorX &&
+	     nCursorY == s_nLastCursorY &&
+	     bCursorShouldDraw == s_bLastCursorShouldDraw )
 		return;
 
 	s_ulLastFocusCommitId = ulFocusCommitId;
 	s_ulLastOverrideCommitId = ulOverrideCommitId;
+	s_nLastCursorX = nCursorX;
+	s_nLastCursorY = nCursorY;
+	s_bLastCursorShouldDraw = bCursorShouldDraw;
 
 	uint32_t uWidth = s_pPipewireBuffer->texture->width();
 	uint32_t uHeight = s_pPipewireBuffer->texture->height();
@@ -2398,15 +2425,43 @@ static void paint_pipewire()
 	currentOutputHeight = uHeight;
 
 	// Paint the windows we have onto the Pipewire stream.
-	paint_window( pFocus->focusWindow, pFocus->focusWindow, &frameInfo, nullptr, 0, 1.0f, pFocus->overrideWindow );
+	// Pass the cursor so it gets included in the capture.
+	paint_window( pFocus->focusWindow, pFocus->focusWindow, &frameInfo, cursor, 0, 1.0f, pFocus->overrideWindow );
 
-	if ( pFocus->overrideWindow && !pFocus->focusWindow->isSteamStreamingClient )
-		paint_window( pFocus->overrideWindow, pFocus->focusWindow, &frameInfo, nullptr, PaintWindowFlag::NoFilter, 1.0f, pFocus->overrideWindow );
+	// Override window (should work)
+	if ( pFocus->overrideWindow && pFocus->focusWindow && !pFocus->focusWindow->isSteamStreamingClient && cv_paint_override_redirect_plane )
+		paint_window( pFocus->overrideWindow, pFocus->focusWindow, &frameInfo, cursor, PaintWindowFlag::NoFilter, 1.0f, pFocus->overrideWindow );
 
-	if ( !ulFocusAppId && pFocus->overlayWindow && pFocus->overlayWindow->opacity )
+	// Steam overlay (should work)
+	if ( !ulFocusAppId && cv_paint_steam_overlay_plane )
 	{
-		paint_window( pFocus->overlayWindow, pFocus->overlayWindow, &frameInfo, nullptr, PaintWindowFlag::DrawBorders | PaintWindowFlag::NoFilter |
-				( cv_overlay_unmultiplied_alpha ? PaintWindowFlag::CoverageMode : 0 )  );
+		if ( pFocus->overlayWindow && pFocus->overlayWindow->opacity )
+		{
+			paint_window( pFocus->overlayWindow, pFocus->overlayWindow, &frameInfo, cursor, PaintWindowFlag::DrawBorders | PaintWindowFlag::NoFilter |
+					( cv_overlay_unmultiplied_alpha ? PaintWindowFlag::CoverageMode : 0 )  );
+			if ( pFocus->overlayWindow == pFocus->inputFocusWindow && pFocus == GetCurrentFocus() )
+				update_touch_scaling( &frameInfo );
+		}
+	}
+
+	// Paint external overlay (mangoapp) onto the Pipewire stream.
+	if ( cv_paint_external_overlay_plane && pFocus->externalOverlayWindow && pFocus->externalOverlayWindow->opacity )
+	{
+		paint_window( pFocus->externalOverlayWindow, pFocus->externalOverlayWindow, &frameInfo, cursor,
+			PaintWindowFlag::NoScale | PaintWindowFlag::NoFilter |
+				( cv_overlay_unmultiplied_alpha ? PaintWindowFlag::CoverageMode : 0 ) );
+		if ( pFocus->externalOverlayWindow == pFocus->inputFocusWindow && pFocus == GetCurrentFocus() )
+			update_touch_scaling( &frameInfo );
+	}
+
+	// Attempt to paint the cursor if it is enabled, so pipewire can see cusror
+	if ( pFocus->inputFocusWindow && cursor && ShouldDrawCursor() && cv_paint_cursor_plane ) {
+		steamcompmgr_win_t *fit = pFocus->focusWindow == pFocus->inputFocusWindow
+			? pFocus->overrideWindow
+			: nullptr;
+		cursor->paint(
+			pFocus->inputFocusWindow, fit,
+			&frameInfo);
 	}
 
 	gamescope::Rc<CVulkanTexture> pRGBTexture = s_pPipewireBuffer->texture->isYcbcr()
