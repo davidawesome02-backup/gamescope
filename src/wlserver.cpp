@@ -1459,17 +1459,17 @@ static void gamescope_input_keyboard_key( struct wl_client *client, struct wl_re
 }
 
 static void gamescope_input_mouse_motion( struct wl_client *client, struct wl_resource *resource,
-  int32_t dx, int32_t dy )
+  wl_fixed_t dx, wl_fixed_t dy )
 {
 	assert( wlserver_is_lock_held() );
-	wlserver_mousemotion( (double)dx, (double)dy, 0 );
+	wlserver_mousemotion( wl_fixed_to_double(dx), wl_fixed_to_double(dy), 0 );
 }
 
 static void gamescope_input_mouse_warp( struct wl_client *client, struct wl_resource *resource,
-  int32_t x, int32_t y )
+  wl_fixed_t x, wl_fixed_t y )
 {
 	assert( wlserver_is_lock_held() );
-	wlserver_mousewarp( (double)x, (double)y, 0, true );
+	wlserver_mousewarp( wl_fixed_to_double(x), wl_fixed_to_double(y), 0, true );
 }
 
 static void gamescope_input_mouse_button( struct wl_client *client, struct wl_resource *resource,

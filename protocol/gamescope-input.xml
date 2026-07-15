@@ -49,8 +49,8 @@
         Move the mouse by the given delta (dx, dy) in pixels.
         Positive dx is right, positive dy is down.
       </description>
-      <arg name="dx" type="int" summary="delta x in pixels"/>
-      <arg name="dy" type="int" summary="delta y in pixels"/>
+      <arg name="dx" type="fixed" summary="delta x in pixels"/>
+      <arg name="dy" type="fixed" summary="delta y in pixels"/>
     </request>
 
     <!-- Mouse: absolute position warp -->
@@ -61,8 +61,8 @@
         The maximum coordinates are given by the width/height from
         the get_output_size event.
       </description>
-      <arg name="x" type="int" summary="absolute x position"/>
-      <arg name="y" type="int" summary="absolute y position"/>
+      <arg name="x" type="fixed" summary="absolute x position"/>
+      <arg name="y" type="fixed" summary="absolute y position"/>
     </request>
 
     <!-- Mouse: button (Linux input event codes: BTN_LEFT, BTN_RIGHT, etc.) -->
