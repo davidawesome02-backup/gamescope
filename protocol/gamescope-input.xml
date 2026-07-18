@@ -85,6 +85,16 @@
       <arg name="dy" type="int" summary="vertical scroll steps * 120"/>
     </request>
 
+    <request name="set_output_size">
+      <description summary="Update the output size">
+        Update the gamescope output size 
+      </description>
+      <arg name="nestedWidth"  type="uint" summary="Width of output (for mouse scale / FSR / real pixels sent)"/>
+      <arg name="nestedHeight" type="uint" summary="Height of output (for mouse scale / FSR / real pixels sent)"/>
+      <arg name="outputWidth"  type="uint" summary="Width of original rendered content"/>
+      <arg name="outputHeight" type="uint" summary="Height of original content"/>
+    </request>
+
     <!-- Query: get output size for absolute positioning -->
     <request name="get_output_size">
       <description summary="query the output size">
@@ -98,8 +108,10 @@
         Reply to get_output_size with the current output dimensions.
         This is the virtual output size, not the physical display size.
       </description>
-      <arg name="width" type="uint" summary="output width in pixels"/>
-      <arg name="height" type="uint" summary="output height in pixels"/>
+      <arg name="nestedWidth" type="uint" summary="output width in pixels"/>
+      <arg name="nestedHeight" type="uint" summary="output height in pixels"/>
+      <arg name="outputWidth" type="uint" summary="output width in pixels"/>
+      <arg name="outputHeight" type="uint" summary="output height in pixels"/>
     </event>
 
     <!-- Current mouse position -->

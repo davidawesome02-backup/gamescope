@@ -1488,9 +1488,25 @@ static void gamescope_input_mouse_scroll( struct wl_client *client, struct wl_re
 
 static void gamescope_input_get_output_size( struct wl_client *client, struct wl_resource *resource )
 {
-	int w = g_nNestedWidth;
-	int h = g_nNestedHeight;
-	gamescope_input_send_output_size( resource, (uint32_t)w, (uint32_t)h );
+	gamescope_input_send_output_size(
+		resource,
+		(uint32_t)g_nNestedWidth, (uint32_t)g_nNestedHeight,
+		(uint32_t)g_nOutputWidth, (uint32_t)g_nOutputHeight
+	);
+}
+
+static void gamescope_input_set_output_size( struct wl_client *client, struct wl_resource *resource, 
+	uint32_t nestedWidth, uint32_t nestedHeight,
+	uint32_t outputWidth, uint32_t outputHeight
+)
+{
+	g_nNestedWidth	= nestedWidth;
+	g_nNestedHeight	= nestedHeight;
+	g_nOutputWidth	= outputWidth;
+	g_nOutputHeight	= outputHeight;
+
+	auto xwayland_server_tmp = wlserver_get_xwayland_server(0);
+	xwayland_server_tmp->update_output_info();
 }
 
 static void gamescope_input_get_mouse_position( struct wl_client *client, struct wl_resource *resource )
@@ -1516,6 +1532,7 @@ static const struct gamescope_input_interface gamescope_input_impl = {
 	.mouse_warp = gamescope_input_mouse_warp,
 	.mouse_button = gamescope_input_mouse_button,
 	.mouse_scroll = gamescope_input_mouse_scroll,
+	.set_output_size = gamescope_input_set_output_size,
 	.get_output_size = gamescope_input_get_output_size,
 	.get_mouse_position = gamescope_input_get_mouse_position,
 };
